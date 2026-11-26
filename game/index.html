@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Isla Brava: Water Bomber</title>
+<style>
+  :root {
+    --amber: #ffc45e;
+    --panel: rgba(10, 15, 17, 0.78);
+    --panel-edge: rgba(255, 196, 94, 0.35);
+    --ink: #f4ede1;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1210; }
+  body { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: var(--ink); }
+  #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: fixed; z-index: 5; pointer-events: none; }
+  .cluster {
+    background: var(--panel);
+    border: 1px solid var(--panel-edge);
+    border-radius: 10px;
+    padding: 8px 12px;
+    backdrop-filter: blur(2px);
+  }
+  #top-left { top: 14px; left: 14px; display: flex; gap: 18px; align-items: baseline; }
+  #top-left .score { color: var(--amber); font-size: 24px; font-weight: 700; letter-spacing: 1px; }
+  #top-left .meta { font-size: 13px; opacity: 0.92; letter-spacing: 1px; }
+  #hud-fires { color: #ff9a5e; font-weight: 700; }
+
+  #top-right { top: 14px; right: 14px; width: 210px; }
+  #top-right .label { font-size: 11px; letter-spacing: 2px; display: flex; justify-content: space-between; }
+  #scorch-track { height: 10px; background: rgba(255,255,255,0.14); border-radius: 5px; margin-top: 5px; overflow: hidden; }
+  #scorch-fill { height: 100%; width: 0%; background: var(--amber); transition: width 0.3s linear; }
+  #hud-wind { margin-top: 6px; font-size: 11px; letter-spacing: 2px; opacity: 0.85; text-align: right; }
+
+  #compass-wrap { top: 14px; left: 50%; transform: translateX(-50%); padding: 4px 6px; }
+  #compass-canvas { display: block; }
+
+  #cluster {
+    bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px; padding: 10px 18px;
+  }
+  #horizon-ring {
+    width: 118px; height: 118px; border-radius: 50%; overflow: hidden;
+    border: 2px solid var(--panel-edge); flex: none;
+  }
+  .gauge { text-align: center; min-width: 74px; }
+  .gauge .value { font-size: 27px; font-weight: 700; color: var(--amber); line-height: 1; }
+  .gauge .unit { font-size: 10px; letter-spacing: 2px; opacity: 0.8; margin-top: 3px; }
+  #tank-gauge { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #tank-track {
+    width: 22px; height: 74px; border: 1px solid var(--panel-edge); border-radius: 5px;
+    display: flex; flex-direction: column-reverse; overflow: hidden; background: rgba(255,255,255,0.08);
+  }
+  #hud-tank-fill { width: 100%; height: 0%; background: #57c7e3; transition: height 0.15s linear; }
+  #tank-gauge .unit { font-size: 10px; letter-spacing: 1px; opacity: 0.8; }
+  #hud-tank-text { color: #9fdcf0; font-weight: 700; font-size: 13px; }
+
+  #hud-warn {
+    bottom: 158px; left: 50%; transform: translateX(-50%);
+    color: #ff5a3c; font-size: 19px; font-weight: 700; letter-spacing: 2px;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.7); display: none;
+    animation: blink 0.55s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  #banner {
+    top: 19%; left: 50%; transform: translateX(-50%) scale(0.96); text-align: center;
+    opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; width: 90%;
+  }
+  #banner.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  #banner-title {
+    font-family: Georgia, 'Times New Roman', serif; font-size: 43px; letter-spacing: 3px;
+    color: #fff7e8; text-shadow: 0 3px 18px rgba(0,0,0,0.65);
+  }
+  #banner-sub { font-size: 15px; letter-spacing: 1px; color: #ffe1ae; text-shadow: 0 2px 8px rgba(0,0,0,0.8); margin-top: 4px; }
+
+  #popups { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  .popup {
+    position: absolute; font-size: 21px; font-weight: 700; letter-spacing: 1px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.75); animation: rise 1.5s ease-out forwards;
+  }
+  @keyframes rise { from { transform: translateY(8px); opacity: 0; } 18% { opacity: 1; } to { transform: translateY(-44px); opacity: 0; } }
+
+  .veil {
+    position: fixed; inset: 0; z-index: 10; display: none;
+    flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(ellipse at center, rgba(20,10,6,0.25) 0%, rgba(20,10,6,0.72) 100%);
+  }
+  .veil.show { display: flex; }
+  .veil h1 {
+    font-family: Georgia, 'Times New Roman', serif; font-size: 64px; letter-spacing: 4px;
+    color: #fff3da; text-shadow: 0 4px 26px rgba(0,0,0,0.8);
+  }
+  .veil h2 { font-size: 21px; letter-spacing: 2px; color: var(--amber); margin-top: 6px; font-weight: 400; }
+  .veil p { margin-top: 18px; font-size: 15px; line-height: 1.75; color: #f7ead2; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
+  .veil .keys { color: var(--amber); }
+  .veil .go { margin-top: 26px; font-size: 17px; letter-spacing: 2px; animation: blink 1.2s steps(2) infinite; }
+  #end-stats { font-size: 17px; color: #ffe1ae; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud cluster" id="top-left">
+  <div class="score" id="hud-score">000000</div>
+  <div class="meta" id="hud-wave">WAVE 1</div>
+  <div class="meta" id="hud-fires">0 FIRES</div>
+</div>
+
+<div class="hud cluster" id="compass-wrap">
+  <canvas id="compass-canvas" width="264" height="34"></canvas>
+</div>
+
+<div class="hud cluster" id="top-right">
+  <div class="label"><span>ISLAND</span><span id="scorch-text">SCORCH 0%</span></div>
+  <div id="scorch-track"><div id="scorch-fill"></div></div>
+  <div id="hud-wind">WIND 0 KT</div>
+</div>
+
+<div class="hud" id="hud-warn">STALL</div>
+
+<div class="hud cluster" id="cluster">
+  <div class="gauge"><div class="value" id="hud-alt">0</div><div class="unit">ALT FT</div></div>
+  <div id="horizon-ring"><canvas id="horizon-canvas" width="118" height="118"></canvas></div>
+  <div class="gauge"><div class="value" id="hud-spd">0</div><div class="unit">SPD KT</div></div>
+  <div class="gauge"><div class="value" id="hud-hdg">000°</div><div class="unit">HDG</div></div>
+  <div id="tank-gauge">
+    <div id="tank-track"><div id="hud-tank-fill"></div></div>
+    <div id="hud-tank-text">0%</div>
+    <div class="unit">TANK</div>
+  </div>
+</div>
+
+<div class="hud" id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+<div id="popups"></div>
+
+<div class="veil" id="title-screen">
+  <h1>ISLA BRAVA</h1>
+  <h2>W A T E R &nbsp; B O M B E R</h2>
+  <p>The pine forest is burning and the lake is your only water supply.<br>
+     Skim the lake to fill your tank, climb out heavy, and drop on the smoke<br>
+     before the fire reaches the village, the lighthouse and the fuel depot.</p>
+  <p><span class="keys">↑</span> climb &nbsp; <span class="keys">↓</span> dive &nbsp; <span class="keys">← →</span> bank &nbsp;
+     <span class="keys">Shift / Ctrl</span> throttle &nbsp; <span class="keys">Space</span> drop water &nbsp; <span class="keys">P</span> pause</p>
+  <div class="go">CLICK OR PRESS ENTER TO FLY</div>
+</div>
+
+<div class="veil" id="end-screen">
+  <h1 id="end-title">TERRAIN STRIKE</h1>
+  <p id="end-stats"></p>
+  <div class="go">PRESS ENTER TO FLY AGAIN</div>
+</div>
+
+<div class="veil" id="pause-veil">
+  <h1>PAUSED</h1>
+  <div class="go">PRESS P TO RESUME</div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
